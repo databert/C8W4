@@ -1,0 +1,97 @@
+---
+title: 'Applied Machine Learning: Course Project'
+author: "Berthold Jaeck"
+date: "7/1/2017"
+output:
+  md_document: default
+  html_document: default
+  fig_width: 6
+  fig_height: 4
+  fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, fig.width =6, fig.height=4)
+```
+# Introduction
+
+Quantified self-movement is a group of fitness enthusiasts, which employs tracking devices in order to track their body motion during training exercices. With all these motion tracking data available, it poses an interesting question whether the actual exercise performed can be predicted based on these data. In this project, we employ data from the human activity recognition project (http://groupware.les.inf.puc-rio.br/har) to test this idea.
+
+
+# Loading data and libraries
+
+The training and testing data can be downloaded from the Coursera course website. Additionally, we load relevant libraries, especially the caret package for training prediction models and related model libraries.
+
+```{r loading}
+library(caret)
+library(randomForest)
+library(rpart)
+library(dplyr)
+training<-tbl_df(read.csv("pml-training.csv", na.strings = c("NA", "")))
+testing<-tbl_df(read.csv("pml-testing.csv", na.strings = c("NA", "")))
+```
+
+The training dataset consists out of 19622 observations and 160 variables. In particular, it contains the variable *classe* consisting out of 5 factors *A* through *E*, which denote the type of exercise performed. We will use it as an outcome to train our prediction model. The testing data set contains 20 observations on 160 variables, for which we want to predict classe variable.
+
+Since the data contain a lot of empty columns as well as columns, which won't have predicting power, we first clean the data from those variables. Doing so, our data frame is reduced to 53 variables.
+
+```{r cleaning}
+training <- training[, colSums(is.na(training)) == 0]
+testing <- testing[, colSums(is.na(testing)) == 0]
+training <- training[, -c(1:7)]
+testing <- testing[, -c(1:7)]
+```
+
+In the next step, we split the training data set up into the actual training set and a cross validation set. Given the large number of observations, we are very safe to do so.
+
+```{r splitting}
+set.seed(1234)
+dp<-createDataPartition(training$classe, p=0.7, list=FALSE)
+trn<-training[dp,]
+val<-training[-dp,]
+```
+
+# Building models
+
+## Tree model
+
+The first model we train on our data is a classification tree model.
+
+```{r model1}
+set.seed(1234)
+model1<-train(classe~.,method="rpart", data=trn)
+predv1<-predict(model1, val)
+confv1<-confusionMatrix(val$classe, predv1)
+confv1$overall[1]
+```
+
+As we can see from the accuracy on the cross-validation set, performance of the tree model is relatively poor with an accuracy of `r round(confv1$overall[1], 2)`. Using a simple tree model does not appear as the right solution to this data set. However, this appears reasonable given the large number of variables, rendering tree building a tricky business. It is already obvious that random forest will naturally do a better job on this data set, which we will see in the next step.
+
+## Random Forest
+
+As the simple tree building algorithm did not do the best job in predicting, we now increase the model complexity and train a random forest model on the same data set.
+```{r model2}
+set.seed(1234)
+model2<-train(classe~.,method="rf", data=trn)
+predv2<-predict(model2, val)
+confv2<-confusionMatrix(val$classe, predv2)
+confv2$overall[1]
+```
+
+```{r model2conf}
+confv2<-confusionMatrix(val$classe, predv2)
+confv2
+confv2$overall[1]
+```
+
+As can be seen, the model based on the random forest algorithm almost reaches 100 % prediction accuracy on the validation set, which is quite an impressive result. The estimated out of sample error follows to be `r (1-round(confv2$overall[1],3))` and may result from corrlations between the variables, that cannot be removed by the algorithm. 
+
+While you may have a hard time finding a more accurate model than this one, the biggest drawback is its relatively long calculation time it takes.
+
+# Predicting on the data set
+
+After having tried different algorithms to predict the classe variable, i.e. the type of work out performed, we are ready to predict on the testing data set. Since highest accuracy near 100 % was reached with random forest, we'll use it to make the final prediction.
+```{r testpred}
+set.seed(1234)
+testpred<-predict(model2, newdata=testing)
+```
